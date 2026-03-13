@@ -1,64 +1,51 @@
-import sys
 import socket
 import json
+import sys
+import subprocess
+import time
 import psutil
 import platform
-import time
-from datetime import datetime
 
 # Configuration
 SERVER_IP = '127.0.0.1'
 SERVER_PORT = 5000
-# Nous permet d'afficher plusieurs agents:
-NODE_ID = sys.argv[1] if len(sys.argv) > 1 else "Agent-Defaut"
-
-def get_metrics():
-    # 1. Métriques de base [cite: 34, 35, 36]
-    metrics = {
-        "node_id": NODE_ID,
-        "timestamp": datetime.now().isoformat(),
-        "os": platform.system(),
-        "cpu_type": platform.processor(),
-        "cpu_usage": psutil.cpu_percent(interval=1),
-        "mem_usage": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage('/').percent,
-        "uptime": int(time.time() - psutil.boot_time()),
-    }
-
-    # 2. Alertes (Charge > 90%)
-    if metrics["cpu_usage"] > 90 or metrics["mem_usage"] > 90:
-        metrics["alert"] = "CRITICAL: High resource usage!"
-
-    # 3. Services (3 réseaux, 3 apps) [cite: 37]
-    # Note: On simule ou vérifie si le processus existe
-    services = ['sshd', 'nginx', 'mysql', 'chrome', 'vlc', 'discord']
-    metrics["services"] = {s: "OK" if s in [p.name() for p in psutil.process_iter()] else "KO" for s in services}
-
-    # 4. Ports (4 prédéfinis) [cite: 38]
-    ports = [22, 80, 443, 3306]
-    metrics["ports"] = {}
-    for port in ports:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            metrics["ports"][port] = "OPEN" if s.connect_ex(('127.0.0.1', port)) == 0 else "CLOSED"
-
-    return metrics
 
 
-def run_agent():
-    while True:
-        try:
-            data = get_metrics()
-            # Connexion TCP [cite: 39]
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-                client_socket.connect((SERVER_IP, SERVER_PORT))
-                client_socket.sendall(json.dumps(data).encode('utf-8'))
-            print(f"[{data['timestamp']}] Données envoyées avec succès.")
-        except Exception as e:
-            print(f"Erreur de connexion : {e}")
+def run_agent(agent_name):
+    """Collecte et envoie les données au serveur"""
+    try:
+        # Collecte des métriques réelles
+        data = {
+            "node_id": agent_name,
+            "os": platform.system(),
+            "cpu": psutil.cpu_percent(interval=1),
+            "ram": psutil.virtual_memory().percent
+        }
 
-        time.sleep(30)  # Fréquence d'envoi [cite: 74]
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((SERVER_IP, SERVER_PORT))
+        s.send(json.dumps(data).encode('utf-8'))
+        s.close()
+    except Exception as e:
+        # En mode stress, on évite d'afficher 100 erreurs si le serveur est coupé
+        pass
 
 
 if __name__ == "__main__":
-    run_agent()
+    # Cas 1 : Mode test de charge (100 agents dans l'ordre)
+    if len(sys.argv) > 1 and sys.argv[1] == "connexion":
+        print("--- Connexion ordonné de 100 agents (1 à 100) ---")
+        for i in range(1, 101):
+            agent_id = f"Agent-{i:03d}"
+            subprocess.Popen(["python", "agents.py", agent_id])
+            print(f"Connexion de {agent_id}...")
+            time.sleep(0.1)  # Pause pour garantir l'ordre d'arrivée au serveur
+        print("\nTerminé : Les 100 agents tournent en arrière-plan.")
+
+    # Cas 2 : Un agent spécifique (ex: python agents.py MonPC)
+    elif len(sys.argv) > 1:
+        run_agent(sys.argv[1])
+
+    # Cas 3 : Aide
+    else:
+        print("Usage: python agents.py connexion")
