@@ -18,4 +18,4 @@ Description: ce projet implémente un système de supervision basé sur une arch
 
    1- Préparation du serveur, agent et la base de données.
    2- Démarrage du serveur : On lance le serveur avec "python server.py"
-   3- Démarrage des agents : avec le commandes "pyton agent.py Connexion"
+   3- Démarrage des agents : avec le commandes "pyton agents.py Connexion"
